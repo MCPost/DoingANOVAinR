@@ -1,0 +1,245 @@
+---
+title: "ANOVA Templates"
+author: "MCPost"
+date: "2 5 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## ANOVA Templates
+
+This script contains chunks of code that implement different ANOVA models. <br>
+Generally there are 3 types of ANOVA models:<br>
+1. Between-Subjects models: All factors in the model are not repeatedly measured over subjects<br>
+2. Within-Subjects models: All factors in the model are repeatedly measured over subjects<br>
+3. Mixed-Effects models: Some factors are repeatedly measured over subject while others are not
+
+<br>
+
+### i.) Load up included libraries
+
+```{}
+# For Data Management
+library(dplyr)
+library(tidyverse)
+# For actual statistical modelling
+library(car)
+library(ez)
+
+```
+
+<br>
+
+### ii.) Create some random data with know parameter values.
+
+```{}
+
+N_subs = 30
+
+beta = rnorm(216,5,15)
+
+subjects = seq(1,N_subs)
+BW_Fac1  = c(1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3)
+BW_Fac2  = c(1,1,1,1,1,2,2,2,2,2,1,1,1,1,1,2,2,2,2,2,1,1,1,1,1,2,2,2,2,2)
+BW_Fac3  = c(1,1,1,2,2,1,1,2,2,2,1,1,1,2,2,1,1,2,2,2,1,1,1,2,2,1,1,2,2,2)
+WI_Fac1  = c(1,2)
+WI_Fac2  = c(1,2,3)
+WI_Fac3  = c(1,2,3)
+
+Data_WI = cbind(subjects,BW_Fac1,BW_Fac2,BW_Fac3)
+Data_WI = cbind(kronecker(rep(1,length(WI_Fac1)),Data_WI), rep(WI_Fac1, each=length(Data_WI[,1])))
+Data_WI = cbind(kronecker(rep(1,length(WI_Fac2)),Data_WI), rep(WI_Fac2, each=length(Data_WI[,1])))
+Data_WI = cbind(kronecker(rep(1,length(WI_Fac3)),Data_WI), rep(WI_Fac3, each=length(Data_WI[,1])))
+
+Data_WI = as_tibble(Data_WI) %>%
+  rename(subjects=V1, BW_Fac1=V2, BW_Fac2=V3, BW_Fac3=V4, WI_Fac1=V5, WI_Fac2=V6, WI_Fac3=V7) %>%
+  mutate(subjects = factor(subjects), BW_Fac1  = factor(BW_Fac1), BW_Fac2  = factor(BW_Fac2),
+         BW_Fac3  = factor(BW_Fac3), WI_Fac1  = factor(WI_Fac1), WI_Fac2  = factor(WI_Fac2),
+         WI_Fac3  = factor(WI_Fac3))
+  
+MM_X = model.matrix(~BW_Fac1*BW_Fac2*BW_Fac3*WI_Fac1*WI_Fac2*WI_Fac3, data = Data_WI,
+              contrasts.arg = list(BW_Fac1 = "contr.sum", BW_Fac2 = "contr.sum", BW_Fac3 = "contr.sum",
+                                   WI_Fac1 = "contr.sum", WI_Fac2 = "contr.sum", WI_Fac3 = "contr.sum"))
+
+
+Data_WI$Y = MM_X %*% beta + rnorm(540,0,20)
+Data_WI = Data_WI %>% arrange(subjects)
+
+Data_BT = Data_WI %>% 
+  pivot_wider(names_from = c(WI_Fac1, WI_Fac2, WI_Fac3), values_from = Y) %>%
+  mutate(Y = rowMeans(.[,5:22]))
+  
+```
+
+<br>
+<br>
+
+##  ANOVA Models
+
+<br>
+
+### 1.1   Between Subjects: One Factorial AOV
+
+<br>
+
+#### 1.1.1    In-built aov
+```{}
+# In-built aov
+anova.1 <- aov(Y ~ BW_Fac1, Data_BT)
+model.tables(anova.1, "means")
+summary(anova.1)
+```
+
+#### 1.1.2    car package aov
+```{}
+model <- lm(Y ~ BW_Fac1, Data_BT)
+caranova.2 <- Anova(model)
+caranova.2
+```
+
+#### 1.1.3    ez package aov
+```{}
+ezanova.1 <- ezANOVA(Data_BT,  dv=.(Y),  wid=.(subjects), between=.(BW_Fac1), detailed=T, return_aov=T)
+ezanova.1
+```
+
+<br>
+<br>
+
+### 1.2   Between Subjects: Multi Factorial AOV
+
+<br>
+
+#### 1.2.1    In-built aov
+```{}
+# In-built aov
+anova.2 <- aov(Y ~ BW_Fac1*BW_Fac2, Data_BT) # das Mal-Zeichen berechnet die Haupteffekte mit
+model.tables(anova.2, "means")
+summary(anova.2)
+```
+
+#### 1.2.2    car package aov
+```{}
+# Car aov
+model <- lm(Y ~ BW_Fac1*BW_Fac2, Data_BT)
+caranova.2 <- Anova(model)
+caranova.2
+```
+
+#### 1.2.3    ez package aov
+```{}
+# ez aov
+ezanova.2 <- ezANOVA(Data_BT,  dv=.(Y),  wid=.(subjects), between=.(BW_Fac1,BW_Fac2), detailed=T, return_aov=T)
+ezanova.2
+```
+
+<br>
+<br>
+
+### 2.1   Within Subjects: One Factorial AOV
+
+<br>
+
+#### 2.1.1    In-built aov
+```{}
+anova_rm1 <- aov(Y ~ WI_Fac1 + Error(subjects/WI_Fac1), Data_WI)
+summary(anova_rm1)
+```
+
+#### 2.1.2    car package aov
+```{}
+model <- lm(cbind((`1_1_1` + `1_2_1` + `1_3_1` + `1_1_2` + `1_2_2` + `1_3_2` + `1_1_3` + `1_2_3` + `1_3_3`)/6, 
+                  (`2_1_1` + `2_2_1` + `2_3_1` + `2_1_2` + `2_2_2` + `2_3_2` + `2_1_3` + `2_2_3` + `2_3_3`)/6) ~ 1, Data_BT)
+rm.data <- expand.grid("WI_Fac1"=gl(2, 1))
+caranova_rm1 <- Anova(model, idata = rm.data, idesign = ~WI_Fac1)
+summary(caranova_rm1, multivariate=F, univariate=T)
+```
+
+#### 2.1.3    ez package aov
+```{}
+ezanova_rm1 <- ezANOVA(Data_WI,  dv=.(Y),  wid=.(subjects), within=.(WI_Fac1), detailed=T, return_aov=T)
+ezanova_rm1
+```
+
+<br>
+<br>
+
+### 2.2 Within Subjects: Multi Factorial AOV
+
+<br>
+
+#### 2.2.1    In-built aov
+```{}
+anova_rm2 <- aov(Y ~ WI_Fac1*WI_Fac2 + Error(subjects/(WI_Fac1*WI_Fac2)), Data_WI)
+summary(anova_rm2)
+```
+
+#### 2.2.2    car package aov
+```{}
+model <- lm(cbind((`1_1_1` + `1_1_2` + `1_1_3`)/3, (`1_2_1` + `1_2_2` + `1_2_3`)/3, (`1_3_1` + `1_3_2` + `1_3_3`)/3,
+                  (`2_1_1` + `2_1_2` + `2_1_3`)/3, (`2_2_1` + `2_2_2` + `2_2_3`)/3, (`2_3_1` + `2_3_2` + `2_3_3`)/3) ~ 
+                  1, Data_BT)
+rm.data <- expand.grid("WI_Fac2"=gl(3, 1), "WI_Fac1"=gl(2,1))
+caranova_rm2 <- Anova(model, idata = rm.data, idesign = ~WI_Fac2*WI_Fac1)
+summary(caranova_rm2, multivariate=F, univariate=T)
+```
+
+#### 2.2.3    ez package aov
+```{}
+ezanova_rm2 <- ezANOVA(Data_WI,  dv=.(Y), wid=.(subjects), within=.(WI_Fac1, WI_Fac2), detailed=T, return_aov=T)
+ezanova_rm2
+```
+
+<br> 
+<br>
+
+### 3.1 Mixed Models: Multi Factorial AOV
+
+<br>
+
+#### 3.1.1    In-built aov
+```{}
+anova_rm3 <- aov(Y ~ BW_Fac1*WI_Fac1*WI_Fac2 + Error(subjects/(WI_Fac1*WI_Fac2)), Data_WI)
+summary(anova_rm3)
+
+anova_rm4 <- aov(Y ~ BW_Fac1*BW_Fac2*BW_Fac3*WI_Fac1*WI_Fac2 + Error(subjects/(WI_Fac1*WI_Fac2)), 
+               Data_WI)
+summary(anova_rm4)
+```
+
+#### 3.1.2    car package aov
+```{}
+model <- lm(cbind((`1_1_1` + `1_1_2` + `1_1_3`)/3, (`1_2_1` + `1_2_2` + `1_2_3`)/3, (`1_3_1` + `1_3_2` + `1_3_3`)/3,
+                  (`2_1_1` + `2_1_2` + `2_1_3`)/3, (`2_2_1` + `2_2_2` + `2_2_3`)/3, (`2_3_1` + `2_3_2` + `2_3_3`)/3) ~ 
+                  BW_Fac1, Data_BT)
+rm.data <- expand.grid("WI_Fac2"=gl(3, 1), "WI_Fac1"=gl(2,1))
+caranova_rm3 <- Anova(model, idata = rm.data, idesign = ~WI_Fac2*WI_Fac1, type=3)
+summary(caranova_rm3, multivariate=F, univariate=T)
+
+model <- lm(cbind((`1_1_1` + `1_1_2` + `1_1_3`)/3, (`1_2_1` + `1_2_2` + `1_2_3`)/3, (`1_3_1` + `1_3_2` + `1_3_3`)/3,
+                  (`2_1_1` + `2_1_2` + `2_1_3`)/3, (`2_2_1` + `2_2_2` + `2_2_3`)/3, (`2_3_1` + `2_3_2` + `2_3_3`)/3) ~ 
+                  BW_Fac1*BW_Fac2*BW_Fac3, Data_BT)
+rm.data <- expand.grid("WI_Fac2"=gl(3, 1), "WI_Fac1"=gl(2,1))
+caranova_rm4 <- Anova(model, idata = rm.data, idesign = ~WI_Fac2*WI_Fac1, type=3)
+summary(caranova_rm4, multivariate=F, univariate=T)
+```
+
+#### 3.1.3    ez package aov
+```{}
+ezanova_rm3 <- ezANOVA(Data_WI,  dv=.(Y),  wid=.(subjects), within=.(WI_Fac1, WI_Fac2), 
+                     between=.(BW_Fac1), detailed=T, return_aov=T)
+ezanova_rm3
+
+ezanova_rm4 <- ezANOVA(Data_WI,  dv=.(Y),  wid=.(subjects), within=.(WI_Fac1, WI_Fac2), 
+                     between=.(BW_Fac1, BW_Fac2, BW_Fac3), detailed=T, return_aov=T)
+ezanova_rm4
+```
+
+
+
+
+
+
